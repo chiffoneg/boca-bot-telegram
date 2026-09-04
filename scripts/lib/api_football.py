@@ -82,10 +82,14 @@ def get_next_fixture(team_id: int) -> dict | None:
     return None
 
 
-def get_head_to_head(team1_id: int, team2_id: int, last: int = 5) -> list:
-    """Últimos `last` enfrentamientos entre los dos equipos (orden no
-    garantizado por la API; quien llame debería ordenar por fecha)."""
-    return _get("/fixtures/headtohead", {"h2h": f"{team1_id}-{team2_id}", "last": last})
+def get_head_to_head(team1_id: int, team2_id: int) -> list:
+    """Todo el historial de enfrentamientos entre los dos equipos que
+    tenga cargado la API. Nota: el parámetro "last" para limitar la
+    cantidad de resultados está bloqueado en el plan free ("Free plans
+    do not have access to the Last parameter"), igual que pasaba con
+    "next" en /fixtures — por eso se pide todo y se recorta del lado
+    del cliente (ver message.build_h2h_section)."""
+    return _get("/fixtures/headtohead", {"h2h": f"{team1_id}-{team2_id}"})
 
 
 def get_lineups(fixture_id: int) -> list:
