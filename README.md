@@ -63,14 +63,12 @@ Todo tiene "botón de prueba manual" (`workflow_dispatch`), así que no
 hace falta esperar al horario del cron para ver si funciona:
 
 - **Probar Telegram de punta a punta** (sin gastar pedidos de la API de
-  fútbol): pestaña **Actions** no hace falta, se corre local:
-  ```bash
-  set TELEGRAM_BOT_TOKEN=...
-  set TELEGRAM_CHAT_ID=...
-  python scripts/send_test_message.py
-  ```
-  Manda un mensaje de prueba con el formato real (aclarado como prueba)
-  a tu Telegram.
+  fútbol): pestaña **Actions** → *Test Telegram message* → **Run
+  workflow**. Manda un mensaje de prueba con el formato real (aclarado
+  como prueba) usando los Secrets ya cargados en GitHub, sin necesidad
+  de tocar el token en tu máquina. (También podés correr
+  `python scripts/send_test_message.py` en local si preferís, seteando
+  `TELEGRAM_BOT_TOKEN` y `TELEGRAM_CHAT_ID` en el entorno.)
 - **Probar el chequeo diario contra la API real**: pestaña **Actions**
   → *Daily check (Boca fixtures)* → **Run workflow**. Gasta 1 pedido de
   los 100 diarios. Revisá el log y el contenido de
