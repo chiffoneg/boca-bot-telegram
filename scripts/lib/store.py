@@ -20,6 +20,12 @@ EMPTY_STATE = {
     "message": None,
     "sent": False,
     "sent_at_utc": None,
+    # Aviso de alineaciones, independiente del aviso principal de arriba:
+    # not_applicable (no hay partido programado) | pending | sent | given_up
+    "lineups_status": "not_applicable",
+    # Qué umbrales (30/20/10 min antes) ya se intentaron, se haya
+    # encontrado la data o no. Cada uno se intenta una sola vez.
+    "lineups_checked_tiers": [],
 }
 
 

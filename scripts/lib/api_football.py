@@ -1,17 +1,17 @@
 """Cliente mínimo para la API de API-Football (api-sports.io).
 
-Solo implementa lo que este proyecto necesita: traer el próximo partido
-de un equipo. Pensado para hacer unos pocos pedidos por día (ver
-scripts/daily_check.py) — muy lejos del límite de 100/día del plan free.
+Implementa lo que este proyecto necesita: próximo partido de un
+equipo, historial de enfrentamientos (H2H) y alineaciones de un
+fixture puntual.
 
 Nota importante sobre el plan free: filtrar /fixtures por "team" exige
 además el parámetro "season", y ese combo (team + season) está
 restringido en el plan free a temporadas viejas (2022-2024), no la
 actual ("Free plans do not have access to this season, try from 2022
 to 2024."). En cambio, filtrar solo por "date" (sin team) SÍ da acceso
-a la temporada/fecha actual sin restricción. Por eso acá se pide, día
-por día, la lista completa de partidos de esa fecha (en todo el mundo)
-y se filtra del lado del cliente por el team_id de Boca.
+a la temporada/fecha actual sin restricción. Por eso get_next_fixture
+pide, día por día, la lista completa de partidos de esa fecha (en todo
+el mundo) y filtra del lado del cliente por el team_id de Boca.
 """
 
 from datetime import datetime, timedelta, timezone
@@ -20,10 +20,8 @@ import requests
 
 from . import config
 
-# Cuántos días hacia adelante (en fecha UTC) se consultan como máximo
-# si no se encuentra nada antes. Con HOURS antes del partido y una
-# ventana de LOOKAHEAD_HOURS, alcanza y sobra con revisar hoy + mañana;
-# se deja uno de margen extra por las dudas.
+# Cuántos días hacia adelante (en fecha UTC) se consulta como máximo en
+# get_next_fixture si no se encuentra nada antes.
 _MAX_DAYS_AHEAD = 2
 
 
@@ -32,16 +30,12 @@ class ApiFootballError(Exception):
     con contenido inesperado."""
 
 
-def _headers() -> dict:
-    return {"x-apisports-key": config.API_FOOTBALL_KEY}
-
-
-def _fetch_fixtures_by_date(date_str: str) -> list:
-    url = f"{config.API_FOOTBALL_BASE_URL}/fixtures"
-    params = {"date": date_str}
+def _get(path: str, params: dict) -> list:
+    url = f"{config.API_FOOTBALL_BASE_URL}{path}"
+    headers = {"x-apisports-key": config.API_FOOTBALL_KEY}
 
     try:
-        resp = requests.get(url, headers=_headers(), params=params, timeout=20)
+        resp = requests.get(url, headers=headers, params=params, timeout=20)
     except requests.RequestException as exc:
         raise ApiFootballError(f"Error de red llamando a API-Football: {exc}") from exc
 
@@ -72,7 +66,7 @@ def get_next_fixture(team_id: int) -> dict | None:
 
     for days_ahead in range(0, _MAX_DAYS_AHEAD + 1):
         date_str = (now_utc + timedelta(days=days_ahead)).date().isoformat()
-        fixtures = _fetch_fixtures_by_date(date_str)
+        fixtures = _get("/fixtures", {"date": date_str})
 
         team_fixtures = [
             f
@@ -86,3 +80,18 @@ def get_next_fixture(team_id: int) -> dict | None:
             return upcoming[0]
 
     return None
+
+
+def get_head_to_head(team1_id: int, team2_id: int, last: int = 5) -> list:
+    """Últimos `last` enfrentamientos entre los dos equipos (orden no
+    garantizado por la API; quien llame debería ordenar por fecha)."""
+    return _get("/fixtures/headtohead", {"h2h": f"{team1_id}-{team2_id}", "last": last})
+
+
+def get_lineups(fixture_id: int) -> list:
+    """Alineaciones de un fixture puntual. Devuelve una lista vacía si
+    todavía no fueron publicadas (es lo normal hasta cerca de la hora
+    del partido), o una lista de 2 elementos (uno por equipo) cuando ya
+    están confirmadas.
+    """
+    return _get("/fixtures/lineups", {"fixture": fixture_id})

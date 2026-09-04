@@ -1,11 +1,12 @@
-"""Arma el texto del mensaje a partir de un fixture de API-Football.
+"""Arma los textos de los distintos mensajes a partir de datos de
+API-Football.
 
-El mensaje se manda en texto plano (sin Markdown/HTML de Telegram) a
-propósito: así lo que ves en Telegram es exactamente lo que copiás y
-pegás en WhatsApp, sin asteriscos ni símbolos raros de por medio.
+Todo en texto plano (sin Markdown/HTML de Telegram) a propósito: así lo
+que ves en Telegram es exactamente lo que copiás y pegás en WhatsApp,
+sin asteriscos ni símbolos raros de por medio.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from . import config
 
@@ -26,6 +27,7 @@ def _format_datetime_ar(dt_ar: datetime) -> str:
 
 
 def build_message(fixture: dict, boca_team_id: int, match_dt_ar: datetime) -> str:
+    """Mensaje principal: quién juega, dónde, cuándo y en qué torneo."""
     home = fixture["teams"]["home"]["name"]
     away = fixture["teams"]["away"]["name"]
     home_id = fixture["teams"]["home"]["id"]
@@ -46,3 +48,57 @@ def build_message(fixture: dict, boca_team_id: int, match_dt_ar: datetime) -> st
         f"🏆 {league_name}",
     ]
     return "\n".join(lines)
+
+
+def build_h2h_section(h2h_fixtures: list, max_items: int = 5) -> str:
+    """Sección con los últimos enfrentamientos entre los dos equipos.
+    Devuelve "" si no hay datos (para que quien llame decida no
+    agregar nada al mensaje)."""
+    if not h2h_fixtures:
+        return ""
+
+    sorted_fx = sorted(
+        h2h_fixtures, key=lambda f: f["fixture"]["timestamp"], reverse=True
+    )[:max_items]
+
+    lines = ["📊 Últimos enfrentamientos:"]
+    for f in sorted_fx:
+        dt_ar = datetime.fromtimestamp(
+            f["fixture"]["timestamp"], tz=timezone.utc
+        ).astimezone(config.TIMEZONE)
+        home = f["teams"]["home"]["name"]
+        away = f["teams"]["away"]["name"]
+        goals = f.get("goals", {})
+        gh, ga = goals.get("home"), goals.get("away")
+        score = f"{gh}-{ga}" if gh is not None and ga is not None else "s/d"
+        lines.append(f"  {dt_ar:%d/%m/%y} {home} {score} {away}")
+
+    return "\n".join(lines)
+
+
+def _format_lineup_team(team_lineup: dict) -> list[str]:
+    team_name = team_lineup.get("team", {}).get("name", "Equipo")
+    formation = team_lineup.get("formation") or ""
+    coach_name = team_lineup.get("coach", {}).get("name") or "DT a confirmar"
+
+    header = f"{team_name} ({formation})" if formation else team_name
+    lines = [header]
+    for entry in team_lineup.get("startXI", []):
+        player = entry.get("player", {})
+        number = player.get("number")
+        name = player.get("name", "?")
+        prefix = f"{number}. " if number is not None else "- "
+        lines.append(f"  {prefix}{name}")
+    lines.append(f"  DT: {coach_name}")
+    return lines
+
+
+def build_lineups_text(lineups: list) -> str:
+    """Mensaje de texto con el 11 titular de ambos equipos. `lineups`
+    es la respuesta cruda de get_lineups (lista de 2 equipos)."""
+    all_lines = ["📋 Alineaciones confirmadas", ""]
+    for i, team_lineup in enumerate(lineups):
+        if i > 0:
+            all_lines.append("")
+        all_lines.extend(_format_lineup_team(team_lineup))
+    return "\n".join(all_lines)

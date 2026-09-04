@@ -16,8 +16,8 @@ import traceback
 from datetime import datetime, timedelta, timezone
 
 from lib import config, store, telegram
-from lib.api_football import ApiFootballError, get_next_fixture
-from lib.message import build_message
+from lib.api_football import ApiFootballError, get_head_to_head, get_next_fixture
+from lib.message import build_h2h_section, build_message
 
 # Lo único que se manda por Telegram cuando algo falla. El detalle real
 # del error queda en los logs del workflow (Actions), no en el chat.
@@ -58,6 +58,20 @@ def main() -> int:
     send_at_utc = match_utc - timedelta(hours=config.HOURS_BEFORE_MATCH_TO_SEND)
     message = build_message(fixture, config.BOCA_TEAM_ID, match_dt_ar)
 
+    home_id = fixture["teams"]["home"]["id"]
+    away_id = fixture["teams"]["away"]["id"]
+    opponent_id = away_id if home_id == config.BOCA_TEAM_ID else home_id
+    try:
+        h2h = get_head_to_head(config.BOCA_TEAM_ID, opponent_id)
+        h2h_section = build_h2h_section(h2h)
+        if h2h_section:
+            message = f"{message}\n\n{h2h_section}"
+    except ApiFootballError as exc:
+        # El historial es un extra, no algo crítico: si falla, se manda
+        # igual el aviso principal sin esa sección, en vez de perder
+        # todo el aviso por esto.
+        print(f"No se pudo traer el historial H2H (no crítico): {exc}", file=sys.stderr)
+
     state = {
         "status": "scheduled",
         "checked_at_utc": store.now_utc_iso(),
@@ -67,6 +81,8 @@ def main() -> int:
         "message": message,
         "sent": False,
         "sent_at_utc": None,
+        "lineups_status": "pending",
+        "lineups_checked_tiers": [],
     }
     store.save_state(state)
 
