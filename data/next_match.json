@@ -2,7 +2,7 @@
   "status": "scheduled",
   "checked_at_utc": "2026-09-04T19:58:15.784588+00:00",
   "fixture_id": 1493113,
-  "match_utc": "2026-09-04T20:10:00+00:00",
+  "match_utc": "2026-09-04T19:00:00+00:00",
   "send_at_utc": "2026-09-05T00:00:00+00:00",
   "message": "🧪 TEST: no debería enviarse todavía (send_at_utc en el futuro)",
   "sent": false,
