@@ -1,0 +1,26 @@
+name: Test lineups message
+
+# Solo se dispara a mano. Manda las alineaciones de prueba (texto +
+# imagen) con datos ficticios, para confirmar que el envío por
+# Telegram funciona sin esperar a un partido real.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install -r requirements.txt
+
+      - name: Mandar alineaciones de prueba
+        working-directory: scripts
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python send_test_lineups.py
