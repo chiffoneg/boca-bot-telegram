@@ -1,10 +1,12 @@
 {
   "status": "no_match",
-  "checked_at_utc": "2026-09-04T19:37:19.075648+00:00",
+  "checked_at_utc": "2026-09-04T19:58:15.784588+00:00",
   "fixture_id": null,
   "match_utc": null,
   "send_at_utc": null,
   "message": null,
   "sent": false,
-  "sent_at_utc": null
+  "sent_at_utc": null,
+  "lineups_status": "not_applicable",
+  "lineups_checked_tiers": []
 }
