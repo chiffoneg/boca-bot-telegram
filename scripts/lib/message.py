@@ -40,7 +40,6 @@ def build_message(fixture: dict, boca_team_id: int, match_dt_ar: datetime) -> st
 
     lines = [
         "JUEGA BOOOCAA !!! 💙💛",
-        "🔵🟡 Partido de Boca",
         f"⚽ {home} vs {away}",
         f"🏟️ {venue_name} (Boca de {localia})",
         f"🕒 {_format_datetime_ar(match_dt_ar)}",
