@@ -8,5 +8,9 @@
   "sent": false,
   "sent_at_utc": null,
   "lineups_status": "pending",
-  "lineups_checked_tiers": []
+  "lineups_checked_tiers": [
+    10,
+    20,
+    30
+  ]
 }
