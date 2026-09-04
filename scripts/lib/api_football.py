@@ -39,7 +39,17 @@ def get_next_fixture(team_id: int) -> dict | None:
     date_to = (now_utc + timedelta(days=_LOOKAHEAD_DAYS)).date().isoformat()
 
     url = f"{config.API_FOOTBALL_BASE_URL}/fixtures"
-    params = {"team": team_id, "from": date_from, "to": date_to}
+    params = {
+        "team": team_id,
+        "from": date_from,
+        "to": date_to,
+        # La API exige "season" cuando se filtra por "team". Para los
+        # torneos sudamericanos la temporada coincide con el año
+        # calendario, así que el año actual (UTC) es correcto salvo en
+        # el borde 31/dic-1/ene, donde en el peor caso se pierde un día
+        # de ventana hasta el chequeo siguiente.
+        "season": now_utc.year,
+    }
 
     try:
         resp = requests.get(url, headers=_headers(), params=params, timeout=15)
