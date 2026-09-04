@@ -5,9 +5,19 @@ de un equipo. Pensado para hacer UNA sola llamada por día (ver
 scripts/daily_check.py).
 """
 
+from datetime import datetime, timedelta, timezone
+
 import requests
 
 from . import config
+
+# Cuántos días hacia adelante pedimos en el rango from/to. Tiene que ser
+# más que LOOKAHEAD_HOURS/24 para no perder partidos cerca del borde de
+# la ventana por husos horarios. El parámetro "next" de la API sería más
+# directo, pero está bloqueado en el plan free ("Free plans do not have
+# access to the Next parameter"), así que usamos from/to + filtrado
+# local en su lugar.
+_LOOKAHEAD_DAYS = 3
 
 
 class ApiFootballError(Exception):
@@ -20,16 +30,16 @@ def _headers() -> dict:
 
 
 def get_next_fixture(team_id: int) -> dict | None:
-    """Devuelve el próximo partido programado del equipo, o None si la API
-    no tiene ninguno cargado (caso raro, pero posible en recesos).
-
-    Usa el parámetro next=1 de /fixtures, que trae el próximo partido
-    cronológico sin importar el torneo: cubre Liga Profesional, Copa
-    Argentina, Libertadores/Sudamericana y cualquier otro torneo que la
-    API tenga cargado para el equipo, todo en un único request.
+    """Devuelve el próximo partido programado del equipo (el de fecha más
+    cercana entre hoy y los próximos días), o None si no hay ninguno
+    cargado en ese rango.
     """
+    now_utc = datetime.now(timezone.utc)
+    date_from = now_utc.date().isoformat()
+    date_to = (now_utc + timedelta(days=_LOOKAHEAD_DAYS)).date().isoformat()
+
     url = f"{config.API_FOOTBALL_BASE_URL}/fixtures"
-    params = {"team": team_id, "next": 1}
+    params = {"team": team_id, "from": date_from, "to": date_to}
 
     try:
         resp = requests.get(url, headers=_headers(), params=params, timeout=15)
@@ -56,4 +66,13 @@ def get_next_fixture(team_id: int) -> dict | None:
     if not results:
         return None
 
-    return results[0]
+    # El rango from/to puede traer partidos ya jugados hoy (antes de
+    # ahora) además de los futuros; nos quedamos con el próximo por
+    # orden cronológico.
+    now_ts = now_utc.timestamp()
+    upcoming = [r for r in results if r["fixture"]["timestamp"] >= now_ts]
+    if not upcoming:
+        return None
+
+    upcoming.sort(key=lambda r: r["fixture"]["timestamp"])
+    return upcoming[0]
