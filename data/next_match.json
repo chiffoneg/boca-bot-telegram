@@ -7,7 +7,7 @@
   "message": "🧪 TEST: no debería enviarse todavía (send_at_utc en el futuro)",
   "sent": false,
   "sent_at_utc": null,
-  "lineups_status": "pending",
+  "lineups_status": "given_up",
   "lineups_checked_tiers": [
     10,
     20,
