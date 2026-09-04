@@ -19,19 +19,20 @@ from lib import config, store, telegram
 from lib.api_football import ApiFootballError, get_next_fixture
 from lib.message import build_message
 
+# Lo único que se manda por Telegram cuando algo falla. El detalle real
+# del error queda en los logs del workflow (Actions), no en el chat.
+ERROR_MESSAGE = "Perdon, flashe fruta 😶‍🌫️"
+
 
 def main() -> int:
     try:
         config.validate_api_football_config()
         fixture = get_next_fixture(config.BOCA_TEAM_ID)
     except ApiFootballError as exc:
-        _report_failure(f"⚠️ No pude chequear los partidos de Boca hoy.\nError de API-Football: {exc}")
+        _report_failure(f"Error de API-Football: {exc}")
         return 1
     except Exception:
-        _report_failure(
-            "⚠️ No pude chequear los partidos de Boca hoy (error inesperado).\n"
-            f"{traceback.format_exc(limit=3)}"
-        )
+        _report_failure(f"Error inesperado:\n{traceback.format_exc(limit=3)}")
         return 1
 
     if fixture is None:
@@ -82,11 +83,13 @@ def _save_no_match() -> None:
     store.save_state(state)
 
 
-def _report_failure(text: str) -> None:
-    print(text, file=sys.stderr)
+def _report_failure(log_text: str) -> None:
+    # El detalle completo va a los logs del workflow, para poder
+    # debuggear. Por Telegram solo se manda el mensaje corto.
+    print(log_text, file=sys.stderr)
     try:
         config.validate_telegram_config()
-        telegram.send_message(text)
+        telegram.send_message(ERROR_MESSAGE)
     except Exception:
         # Si ni siquiera se puede avisar por Telegram, al menos que quede
         # en los logs del workflow (falla el step y se ve en Actions).

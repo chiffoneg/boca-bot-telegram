@@ -39,6 +39,7 @@ def build_message(fixture: dict, boca_team_id: int, match_dt_ar: datetime) -> st
     league_name = fixture.get("league", {}).get("name", "Torneo a confirmar")
 
     lines = [
+        "JUEGA BOOOCAA !!! 💙💛",
         "🔵🟡 Partido de Boca",
         f"⚽ {home} vs {away}",
         f"🏟️ {venue_name} (Boca de {localia})",
