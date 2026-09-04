@@ -1,0 +1,51 @@
+name: Daily check (Boca fixtures)
+
+# Corre 1 sola vez por día a las 3am hora Argentina (UTC-3 todo el año,
+# no tiene horario de verano => 6:00 UTC siempre).
+# workflow_dispatch permite dispararlo a mano desde la pestaña Actions
+# para probar contra la API real sin esperar al cron.
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: daily-check
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install -r requirements.txt
+
+      - name: Chequear próximo partido de Boca
+        working-directory: scripts
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
+          BOCA_TEAM_ID: ${{ vars.BOCA_TEAM_ID }}
+        run: python daily_check.py
+
+      - name: Guardar data/next_match.json si cambió
+        run: |
+          git config user.name "boca-bot"
+          git config user.email "boca-bot@users.noreply.github.com"
+          git add data/next_match.json
+          if git diff --cached --quiet; then
+            echo "Sin cambios en data/next_match.json"
+          else
+            git commit -m "chore: actualizar estado de próximo partido"
+            git pull --rebase
+            git push
+          fi
