@@ -1,10 +1,10 @@
 {
-  "status": "sent",
-  "checked_at_utc": "2026-09-04T19:34:23.857887+00:00",
-  "fixture_id": 999999,
-  "match_utc": "2026-09-04T23:00:00+00:00",
-  "send_at_utc": "2026-09-04T18:00:00+00:00",
-  "message": "🧪 PRUEBA DEL WATCHER (no es un partido real)\n🔵🟡 Partido de Boca\n⚽ Boca Juniors vs River Plate\n🏟️ La Bombonera (Boca de local)\n🕒 viernes 04/09 20:00 hs (hora Arg)\n🏆 Liga Profesional Argentina",
-  "sent": true,
-  "sent_at_utc": "2026-09-04T19:36:15.982693+00:00"
+  "status": "no_match",
+  "checked_at_utc": "2026-09-04T19:37:19.075648+00:00",
+  "fixture_id": null,
+  "match_utc": null,
+  "send_at_utc": null,
+  "message": null,
+  "sent": false,
+  "sent_at_utc": null
 }
