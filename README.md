@@ -1,7 +1,13 @@
 # boca-bot-telegram
 
-Bot que avisa por Telegram, 5 horas antes de cada partido de Boca
-Juniors, un mensaje ya armado y listo para copiar y pegar en WhatsApp.
+Bot que avisa por Telegram antes de cada partido de Boca Juniors:
+
+1. **5 horas antes**: mensaje con quién juega, dónde, cuándo, en qué
+   torneo y el historial de los últimos enfrentamientos — listo para
+   copiar y pegar en WhatsApp.
+2. **30/20/10 minutos antes**: en cuanto la API publica las
+   alineaciones, dos mensajes más (texto + imagen) con el 11 titular de
+   ambos equipos.
 
 ## Cómo funciona
 
@@ -9,24 +15,37 @@ Dos procesos separados, corridos por GitHub Actions (gratis, sin
 servidor propio):
 
 1. **`daily-check.yml`** — corre 1 sola vez por día, a las 3am hora
-   Argentina. Llama UNA vez a la API de fútbol (API-Football), busca si
-   Boca tiene partido en las próximas ~22 horas y, si lo hay, arma el
-   mensaje y calcula la hora exacta de envío (hora del partido − 5
-   horas). Guarda todo en [`data/next_match.json`](data/next_match.json)
-   y lo commitea al repo. Acá todavía **no se manda nada**.
-2. **`watcher.yml`** — corre cada 15 minutos. **No** llama a ninguna
-   API de fútbol: solo lee `data/next_match.json` y compara la hora
-   actual contra la hora de envío guardada. Si ya se cumplió, manda el
-   mensaje por Telegram y marca el archivo como enviado (para no
-   duplicar).
-3. **Fallback**: si por algún motivo la hora ideal de envío ya pasó
-   cuando el watcher la nota (por ejemplo un partido muy temprano a la
-   mañana), lo manda igual en el primer run que lo detecta, en vez de
-   perderlo.
+   Argentina. Llama a la API de fútbol (API-Football), busca si Boca
+   tiene partido en las próximas ~22 horas y, si lo hay:
+   - arma el mensaje principal y calcula la hora exacta de envío (hora
+     del partido − 5 horas);
+   - le agrega la sección de historial de enfrentamientos (H2H) contra
+     el rival, si la API tiene datos;
+   - inicializa el seguimiento de alineaciones (`lineups_status:
+     pending`).
 
-Con esto se gasta como mucho **1 pedido a la API por día** (el plan
-gratuito de API-Football da 100/día), y el watcher no toca la API para
-nada.
+   Guarda todo en [`data/next_match.json`](data/next_match.json) y lo
+   commitea al repo. Acá todavía **no se manda nada**.
+
+2. **`watcher.yml`** — corre cada 10 minutos y maneja dos avisos
+   independientes:
+   - **Aviso principal**: no llama a la API, solo compara la hora
+     actual contra la hora de envío guardada y manda el mensaje ya
+     armado cuando corresponde.
+     **Fallback**: si esa hora ya pasó para cuando el watcher la nota
+     (por ejemplo un partido muy temprano a la mañana), lo manda igual
+     en el primer run que lo detecta, en vez de perderlo.
+   - **Alineaciones**: acá sí llama a la API, pero solo en las ventanas
+     de 30, 20 y 10 minutos antes del partido — cada una se intenta una
+     única vez, se haya encontrado la data o no. En cuanto aparecen,
+     manda dos mensajes separados (texto y después la imagen) y deja de
+     intentar. Si llega la hora del partido sin haberlas encontrado, no
+     manda nada más (no siempre se publican a tiempo, sobre todo en
+     torneos/categorías con menos cobertura de datos).
+
+Presupuesto de la API: como mucho ~4-5 pedidos por día (1-3 del chequeo
+diario + 1 de historial + hasta 3 de alineaciones, solo en días de
+partido), muy lejos del límite de 100/día del plan free.
 
 ## Setup
 
@@ -65,39 +84,64 @@ hace falta esperar al horario del cron para ver si funciona:
 - **Probar Telegram de punta a punta** (sin gastar pedidos de la API de
   fútbol): pestaña **Actions** → *Test Telegram message* → **Run
   workflow**. Manda un mensaje de prueba con el formato real (aclarado
-  como prueba) usando los Secrets ya cargados en GitHub, sin necesidad
-  de tocar el token en tu máquina. (También podés correr
-  `python scripts/send_test_message.py` en local si preferís, seteando
-  `TELEGRAM_BOT_TOKEN` y `TELEGRAM_CHAT_ID` en el entorno.)
+  como prueba) usando los Secrets ya cargados en GitHub.
+- **Probar las alineaciones** (texto + imagen) sin esperar a un
+  partido real: pestaña **Actions** → *Test lineups message* → **Run
+  workflow**. Usa datos ficticios.
 - **Probar el chequeo diario contra la API real**: pestaña **Actions**
-  → *Daily check (Boca fixtures)* → **Run workflow**. Gasta 1 pedido de
-  los 100 diarios. Revisá el log y el contenido de
+  → *Daily check (Boca fixtures)* → **Run workflow**. Gasta 1-2 pedidos
+  de los 100 diarios. Revisá el log y el contenido de
   `data/next_match.json` después de correrlo.
 - **Probar el watcher**: pestaña **Actions** → *Watcher (mandar aviso
-  de partido)* → **Run workflow**. Si `data/next_match.json` tiene un
-  partido programado y ya pasó la hora de envío, te llega el mensaje.
+  de partido y alineaciones)* → **Run workflow**. Actúa según lo que
+  encuentre en `data/next_match.json` en ese momento.
 
-Recién después de ver estas tres pruebas OK conviene dejarlo corriendo
-solo con el cron.
+Recién después de ver estas pruebas OK conviene dejarlo corriendo solo
+con el cron.
+
+## Formato de `data/next_match.json`
+
+```jsonc
+{
+  "status": "scheduled",       // empty | no_match | scheduled | sent
+  "fixture_id": 1493113,
+  "match_utc": "...",
+  "send_at_utc": "...",        // hora del aviso principal (partido - 5h)
+  "message": "...",            // aviso principal ya armado, con H2H incluido
+  "sent": false,
+  "lineups_status": "pending", // not_applicable | pending | sent | given_up
+  "lineups_checked_tiers": []  // qué ventanas (30/20/10 min) ya se intentaron
+}
+```
 
 ## Limitaciones a tener en cuenta
 
 - **Los cron de GitHub Actions no son puntuales al segundo**: pueden
-  atrasarse varios minutos en horas pico. Por eso el watcher corre cada
-  15 minutos y no una vez justo a la hora calculada.
+  atrasarse varios minutos en horas pico. El watcher corre cada 10
+  minutos, así que los umbrales de 30/20/10 min de alineaciones son
+  aproximados, no exactos al minuto.
+- **Las alineaciones no siempre se publican a tiempo** (o no se
+  publican) en la API, sobre todo en torneos/categorías con menos
+  cobertura de datos (Copa Argentina en instancias tempranas, por
+  ejemplo). Si no llegan, el bot no manda nada — no hay aviso de "no
+  hay alineaciones" para no generar ruido.
 - **GitHub apaga solo los cron si el repo está 60 días sin actividad**
-  (sin commits). Si pasa mucho tiempo sin que juegue Boca... en
-  realidad juega bastante seguido, así que no debería ser un problema
-  real, pero si alguna vez el bot deja de mandar avisos, revisá que los
-  workflows sigan habilitados en la pestaña Actions.
+  (sin commits). Si alguna vez el bot deja de mandar avisos, revisá que
+  los workflows sigan habilitados en la pestaña Actions.
 - Si `daily-check.yml` falla (API caída, key vencida, etc.), te llega
-  un mensaje de error por Telegram avisando que hay que revisar a mano
-  ese día.
+  un mensaje corto de error por Telegram ("Perdon, flashe fruta 😶‍🌫️");
+  el detalle técnico completo queda en los logs del workflow.
+- El plan free de API-Football tiene restricciones no documentadas
+  claramente que fuimos encontrando en la práctica: el parámetro `next`
+  de `/fixtures` y el parámetro `last` de `/fixtures/headtohead` están
+  bloqueados, y filtrar `/fixtures` por `team`+`season` solo funciona
+  para temporadas viejas (2022-2024), no la actual. El código ya
+  esquiva estas tres cosas (ver comentarios en
+  [`scripts/lib/api_football.py`](scripts/lib/api_football.py)), pero
+  si la API cambia de comportamiento de nuevo, revisar ahí primero.
 
 ## Roadmap
 
-- El historial de enfrentamientos entre los equipos (head-to-head) no
-  está en esta primera versión — queda para una siguiente iteración.
 - Pensado para escalar a más de un destinatario más adelante: hoy
   `TELEGRAM_CHAT_ID` es un solo valor, pero `lib/telegram.py` está
   aislado así que agregar una lista de chat_ids es un cambio chico y
