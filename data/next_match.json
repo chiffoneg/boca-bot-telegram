@@ -1,12 +1,12 @@
 {
-  "status": "no_match",
-  "checked_at_utc": "2026-09-04T20:04:26.204355+00:00",
-  "fixture_id": null,
-  "match_utc": null,
-  "send_at_utc": null,
-  "message": null,
+  "status": "scheduled",
+  "checked_at_utc": "2026-09-05T10:12:49.364641+00:00",
+  "fixture_id": 1493113,
+  "match_utc": "2026-09-05T19:30:00+00:00",
+  "send_at_utc": "2026-09-05T14:30:00+00:00",
+  "message": "JUEGA BOOOCAA !!! 💙💛\n⚽ Gimnasia M. vs Boca Juniors\n🏟️ Victor Legrotaglie (Boca de visitante)\n🕒 sábado 05/09 16:30 hs (hora Arg)\n🏆 Liga Profesional Argentina\n\n📊 Últimos enfrentamientos:\n  05/09/26 Gimnasia M. s/d Boca Juniors\n  28/02/26 Boca Juniors 1-1 Gimnasia M.",
   "sent": false,
   "sent_at_utc": null,
-  "lineups_status": "not_applicable",
+  "lineups_status": "pending",
   "lineups_checked_tiers": []
 }
