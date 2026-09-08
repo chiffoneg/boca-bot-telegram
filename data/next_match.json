@@ -1,12 +1,12 @@
 {
-  "status": "sent",
-  "checked_at_utc": "2026-09-05T10:12:49.364641+00:00",
-  "fixture_id": 1493113,
-  "match_utc": "2026-09-05T19:30:00+00:00",
-  "send_at_utc": "2026-09-05T14:30:00+00:00",
-  "message": "JUEGA BOOOCAA !!! 💙💛\n⚽ Gimnasia M. vs Boca Juniors\n🏟️ Victor Legrotaglie (Boca de visitante)\n🕒 sábado 05/09 16:30 hs (hora Arg)\n🏆 Liga Profesional Argentina\n\n📊 Últimos enfrentamientos:\n  05/09/26 Gimnasia M. s/d Boca Juniors\n  28/02/26 Boca Juniors 1-1 Gimnasia M.",
-  "sent": true,
-  "sent_at_utc": "2026-09-05T16:53:18.901617+00:00",
-  "lineups_status": "given_up",
+  "status": "scheduled",
+  "checked_at_utc": "2026-09-08T10:53:14.219766+00:00",
+  "fixture_id": 1629830,
+  "match_utc": "2026-09-09T00:30:00+00:00",
+  "send_at_utc": "2026-09-08T19:30:00+00:00",
+  "message": "JUEGA BOOOCAA !!! 💙💛\n⚽ Boca Juniors vs Sao Paulo\n🏟️ Estadio Alberto J. Armando (Boca de local)\n🕒 martes 08/09 21:30 hs (hora Arg)\n🏆 CONMEBOL Sudamericana\n\n📊 Últimos enfrentamientos:\n  15/09/26 Sao Paulo s/d Boca Juniors\n  08/09/26 Boca Juniors s/d Sao Paulo",
+  "sent": false,
+  "sent_at_utc": null,
+  "lineups_status": "pending",
   "lineups_checked_tiers": []
 }
