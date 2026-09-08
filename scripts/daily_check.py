@@ -1,14 +1,18 @@
 #!/usr/bin/env python3
 """Chequeo diario (corre 1 vez por día, ~3am hora Argentina vía cron).
 
-Hace UNA sola llamada a API-Football, busca si Boca tiene partido dentro
-de las próximas ~22 horas y, si lo hay, arma el mensaje completo y calcula
-la hora exacta de envío (partido menos 5 horas). Todo esto se guarda en
-data/next_match.json. Acá NO se manda ningún mensaje de partido — de eso
-se encarga watcher.py.
+Busca si Boca tiene partido dentro de las próximas ~22 horas y, si lo
+hay, arma el mensaje completo y calcula la hora exacta de envío
+(partido menos 5 horas), guardando todo en data/next_match.json. El
+aviso completo lo manda watcher.py a la hora que corresponde; acá solo
+se manda una confirmación corta de que quedó agendado.
 
-Si algo falla (red, API caída, respuesta inesperada), se avisa por
-Telegram para que quede claro que hay que revisar a mano ese día.
+Todos los días manda algo por Telegram, justamente para que sirva de
+señal de vida:
+- Si hay partido: confirmación de agendado, con la hora del aviso.
+- Si no hay partido: NO_MATCH_MESSAGE.
+- Si algo falla: ERROR_MESSAGE (el detalle técnico queda en los logs
+  del workflow, no en el chat).
 """
 
 import sys
@@ -17,10 +21,9 @@ from datetime import datetime, timedelta, timezone
 
 from lib import config, store, telegram
 from lib.api_football import ApiFootballError, get_next_fixture
-from lib.message import build_message
+from lib.message import build_message, build_scheduled_confirmation
 
-# Lo único que se manda por Telegram cuando algo falla. El detalle real
-# del error queda en los logs del workflow (Actions), no en el chat.
+NO_MATCH_MESSAGE = "Hoy no jugamos compa, el dia es una mierda :("
 ERROR_MESSAGE = "Perdon, flashe fruta 😶‍🌫️"
 
 
@@ -38,6 +41,7 @@ def main() -> int:
     if fixture is None:
         _save_no_match()
         print("No hay próximo partido cargado en API-Football para este equipo.")
+        _notify(NO_MATCH_MESSAGE)
         return 0
 
     match_utc = datetime.fromtimestamp(
@@ -52,10 +56,12 @@ def main() -> int:
             f"Próximo partido en {hours_until_match:.1f}h, fuera de la ventana "
             f"de {config.LOOKAHEAD_HOURS}h. No se programa nada todavía."
         )
+        _notify(NO_MATCH_MESSAGE)
         return 0
 
     match_dt_ar = match_utc.astimezone(config.TIMEZONE)
     send_at_utc = match_utc - timedelta(hours=config.HOURS_BEFORE_MATCH_TO_SEND)
+    send_dt_ar = send_at_utc.astimezone(config.TIMEZONE)
     message = build_message(fixture, config.BOCA_TEAM_ID, match_dt_ar)
 
     # Nota: la sección de historial de enfrentamientos (H2H) se sacó
@@ -73,14 +79,14 @@ def main() -> int:
         "message": message,
         "sent": False,
         "sent_at_utc": None,
-        "lineups_status": "pending",
-        "lineups_checked_tiers": [],
     }
     store.save_state(state)
 
     print("Partido encontrado y programado:")
     print(message)
     print(f"\nSe va a enviar a las (UTC): {send_at_utc.isoformat()}")
+
+    _notify(build_scheduled_confirmation(fixture, match_dt_ar, send_dt_ar))
     return 0
 
 
@@ -89,6 +95,18 @@ def _save_no_match() -> None:
     state["status"] = "no_match"
     state["checked_at_utc"] = store.now_utc_iso()
     store.save_state(state)
+
+
+def _notify(text: str) -> None:
+    """Manda un mensaje corto por Telegram. Si falla, no se corta el
+    chequeo: el estado ya se guardó y el aviso principal (que es lo
+    importante) lo maneja watcher.py aparte."""
+    print(f"Mandando por Telegram:\n{text}")
+    try:
+        config.validate_telegram_config()
+        telegram.send_message(text)
+    except Exception as exc:
+        print(f"No se pudo mandar el mensaje por Telegram: {exc}", file=sys.stderr)
 
 
 def _report_failure(log_text: str) -> None:

@@ -1,11 +1,13 @@
-name: Watcher (mandar aviso de partido y alineaciones)
+name: Watcher (mandar aviso de partido)
 
-# Corre cada 10 minutos. Para el aviso principal NO llama a ninguna API
-# de fútbol: solo lee data/next_match.json (armado por daily-check.yml)
-# y, si ya es la hora, manda el mensaje ya armado por Telegram. Para las
-# alineaciones sí llama a la API, pero solo en las ventanas de 30/20/10
-# minutos antes del partido (ver scripts/watcher.py).
-# workflow_dispatch permite dispararlo a mano para probar.
+# Se dispara desde afuera (cron-job.org llama a la API de GitHub cada
+# pocos minutos), porque el trigger "schedule" nativo de GitHub tiene
+# prioridad baja y se atrasa horas en repos poco activos. El schedule
+# de abajo queda igual, solo como backup redundante.
+#
+# NO llama a ninguna API de fútbol: solo lee data/next_match.json
+# (armado por daily-check.yml) y, si ya es la hora, manda el mensaje ya
+# armado por Telegram.
 on:
   schedule:
     - cron: "*/10 * * * *"
@@ -35,7 +37,6 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
         run: python watcher.py
 
       - name: Guardar data/next_match.json si cambió

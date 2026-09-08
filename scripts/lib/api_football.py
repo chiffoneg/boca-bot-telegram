@@ -1,8 +1,7 @@
 """Cliente mínimo para la API de API-Football (api-sports.io).
 
 Implementa lo que este proyecto necesita: próximo partido de un
-equipo, historial de enfrentamientos (H2H) y alineaciones de un
-fixture puntual.
+equipo y el historial de enfrentamientos (H2H) contra un rival.
 
 Nota importante sobre el plan free: filtrar /fixtures por "team" exige
 además el parámetro "season", y ese combo (team + season) está
@@ -90,12 +89,3 @@ def get_head_to_head(team1_id: int, team2_id: int) -> list:
     "next" en /fixtures — por eso se pide todo y se recorta del lado
     del cliente (ver message.build_h2h_section)."""
     return _get("/fixtures/headtohead", {"h2h": f"{team1_id}-{team2_id}"})
-
-
-def get_lineups(fixture_id: int) -> list:
-    """Alineaciones de un fixture puntual. Devuelve una lista vacía si
-    todavía no fueron publicadas (es lo normal hasta cerca de la hora
-    del partido), o una lista de 2 elementos (uno por equipo) cuando ya
-    están confirmadas.
-    """
-    return _get("/fixtures/lineups", {"fixture": fixture_id})

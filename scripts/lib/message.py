@@ -76,29 +76,18 @@ def build_h2h_section(h2h_fixtures: list, max_items: int = 5) -> str:
     return "\n".join(lines)
 
 
-def _format_lineup_team(team_lineup: dict) -> list[str]:
-    team_name = team_lineup.get("team", {}).get("name", "Equipo")
-    formation = team_lineup.get("formation") or ""
-    coach_name = team_lineup.get("coach", {}).get("name") or "DT a confirmar"
+def build_scheduled_confirmation(
+    fixture: dict, match_dt_ar: datetime, send_dt_ar: datetime
+) -> str:
+    """Confirmación que se manda apenas se agenda un partido, para saber
+    que el bot lo detectó (y de paso, que sigue vivo)."""
+    home = fixture["teams"]["home"]["name"]
+    away = fixture["teams"]["away"]["name"]
 
-    header = f"{team_name} ({formation})" if formation else team_name
-    lines = [header]
-    for entry in team_lineup.get("startXI", []):
-        player = entry.get("player", {})
-        number = player.get("number")
-        name = player.get("name", "?")
-        prefix = f"{number}. " if number is not None else "- "
-        lines.append(f"  {prefix}{name}")
-    lines.append(f"  DT: {coach_name}")
-    return lines
-
-
-def build_lineups_text(lineups: list) -> str:
-    """Mensaje de texto con el 11 titular de ambos equipos. `lineups`
-    es la respuesta cruda de get_lineups (lista de 2 equipos)."""
-    all_lines = ["📋 Alineaciones confirmadas", ""]
-    for i, team_lineup in enumerate(lineups):
-        if i > 0:
-            all_lines.append("")
-        all_lines.extend(_format_lineup_team(team_lineup))
-    return "\n".join(all_lines)
+    lines = [
+        "✅ Hay partido de Boca",
+        f"⚽ {home} vs {away}",
+        f"🕒 {_format_datetime_ar(match_dt_ar)}",
+        f"📬 Te aviso a las {send_dt_ar:%H:%M} hs",
+    ]
+    return "\n".join(lines)

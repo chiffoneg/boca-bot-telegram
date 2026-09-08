@@ -1,3 +1,2 @@
 requests==2.32.3
 tzdata==2024.2
-Pillow==11.0.0
