@@ -22,11 +22,6 @@ EMPTY_STATE = {
     # (confirmación de agendado, "no jugamos" o error). Evita repetirla
     # cuando el chequeo corre varias veces por día.
     "daily_notice_date_ar": None,
-    # fixture_id del último partido por el que ya se mandó la
-    # confirmación de agendado. Si get_next_fixture encuentra un
-    # fixture_id distinto a este, es un partido nuevo y siempre se
-    # avisa, sin importar la deduplicación por día de arriba.
-    "last_notified_fixture_id": None,
     "fixture_id": None,
     "match_utc": None,
     "send_at_utc": None,

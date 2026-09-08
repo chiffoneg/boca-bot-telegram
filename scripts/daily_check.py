@@ -71,7 +71,12 @@ def check_and_notify() -> None:
     send_at_utc = match_utc - timedelta(hours=config.HOURS_BEFORE_MATCH_TO_SEND)
     send_dt_ar = send_at_utc.astimezone(config.TIMEZONE)
 
-    is_new_fixture = fixture_id != state.get("last_notified_fixture_id")
+    # ¿Es el mismo partido que ya teníamos guardado (de un refresco
+    # anterior), o uno nuevo? Importa porque si ya le mandamos el aviso
+    # principal (sent=True) NO hay que resetear eso: si lo hiciéramos,
+    # el próximo refresco antes del partido volvería a "descubrir" el
+    # mismo fixture y el watcher lo mandaría de nuevo.
+    is_same_fixture_as_before = fixture_id == state.get("fixture_id")
 
     # Nota: la sección de historial de enfrentamientos (H2H) se sacó
     # temporalmente del mensaje. build_h2h_section() estaba incluyendo
@@ -80,29 +85,30 @@ def check_and_notify() -> None:
     # Queda pendiente arreglar el filtro antes de reactivarla.
     message = build_message(fixture, config.BOCA_TEAM_ID, match_dt_ar)
 
-    state["status"] = "scheduled"
     state["fixture_id"] = fixture_id
     state["match_utc"] = match_utc.isoformat()
     state["send_at_utc"] = send_at_utc.isoformat()
     state["message"] = message
-    state["sent"] = False
-    state["sent_at_utc"] = None
+    if not is_same_fixture_as_before or state.get("status") != "sent":
+        state["status"] = "scheduled"
+    if not is_same_fixture_as_before:
+        state["sent"] = False
+        state["sent_at_utc"] = None
     store.save_state(state)
 
     print("Partido encontrado y programado:")
     print(message)
     print(f"\nSe va a enviar a las (UTC): {send_at_utc.isoformat()}")
 
-    if is_new_fixture:
-        # Partido nuevo (no lo habíamos avisado todavía): siempre se
+    if not is_same_fixture_as_before:
+        # Partido nuevo (no lo habíamos visto todavía): siempre se
         # notifica, sin importar si ya se mandó algo hoy — es
         # información nueva, no un heartbeat repetido.
         _notify(build_scheduled_confirmation(fixture, match_dt_ar, send_dt_ar))
         state["daily_notice_date_ar"] = today_ar
-        state["last_notified_fixture_id"] = fixture_id
         store.save_state(state)
     else:
-        print("Ya se había avisado este mismo partido, no se repite el aviso.")
+        print("Ya conocíamos este partido, no se repite la confirmación.")
 
 
 def _finish_no_match(state: dict, today_ar: str, already_notified_today: bool) -> None:
