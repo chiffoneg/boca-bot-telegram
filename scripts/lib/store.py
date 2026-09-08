@@ -13,7 +13,20 @@ from . import config
 
 EMPTY_STATE = {
     "status": "empty",  # empty | no_match | scheduled | sent | error
-    "checked_at_utc": None,
+    "checked_at_utc": None,  # último chequeo EXITOSO contra la API
+    # Último intento de chequeo (exitoso o no). Se usa para decidir si el
+    # estado está "viejo" y hay que re-chequear, sin que un fallo de la
+    # API dispare reintentos en loop.
+    "last_attempt_utc": None,
+    # Último día (fecha hora Arg) en que se mandó la notificación diaria
+    # (confirmación de agendado, "no jugamos" o error). Evita repetirla
+    # cuando el chequeo corre varias veces por día.
+    "daily_notice_date_ar": None,
+    # fixture_id del último partido por el que ya se mandó la
+    # confirmación de agendado. Si get_next_fixture encuentra un
+    # fixture_id distinto a este, es un partido nuevo y siempre se
+    # avisa, sin importar la deduplicación por día de arriba.
+    "last_notified_fixture_id": None,
     "fixture_id": None,
     "match_utc": None,
     "send_at_utc": None,
@@ -28,11 +41,16 @@ def load_state() -> dict:
         return dict(EMPTY_STATE)
     try:
         with open(config.STATE_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
+            loaded = json.load(f)
     except (json.JSONDecodeError, OSError):
         # Archivo corrupto o ilegible: tratamos como si no hubiera nada
         # guardado en vez de reventar.
         return dict(EMPTY_STATE)
+
+    # Completa con los defaults cualquier campo que el archivo guardado
+    # no tenga todavía (por ejemplo, si se agregó a EMPTY_STATE después
+    # de que este archivo se guardara por última vez).
+    return {**EMPTY_STATE, **loaded}
 
 
 def save_state(state: dict) -> None:

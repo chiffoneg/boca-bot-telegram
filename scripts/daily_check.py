@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Chequeo diario (corre 1 vez por día, ~3am hora Argentina vía cron).
+"""Chequeo de partidos de Boca.
 
 Busca si Boca tiene partido dentro de las próximas ~22 horas y, si lo
 hay, arma el mensaje completo y calcula la hora exacta de envío
@@ -7,12 +7,14 @@ hay, arma el mensaje completo y calcula la hora exacta de envío
 aviso completo lo manda watcher.py a la hora que corresponde; acá solo
 se manda una confirmación corta de que quedó agendado.
 
-Todos los días manda algo por Telegram, justamente para que sirva de
-señal de vida:
-- Si hay partido: confirmación de agendado, con la hora del aviso.
-- Si no hay partido: NO_MATCH_MESSAGE.
-- Si algo falla: ERROR_MESSAGE (el detalle técnico queda en los logs
-  del workflow, no en el chat).
+check_and_notify() está pensada para poder llamarse muchas veces por
+día sin duplicar avisos (la usa tanto este script, corrido a mano o
+por daily-check.yml, como watcher.py, que la dispara sola cada
+REFRESH_INTERVAL si el estado está viejo — ver ese archivo). La
+deduplicación es por día (hora Argentina) y por fixture_id, así que
+research repetida el mismo día no vuelve a mandar el mismo aviso, pero
+si aparece un partido nuevo sí avisa al toque, sin importar cuántas
+veces ya se chequeó ese día.
 """
 
 import sys
@@ -27,80 +29,106 @@ NO_MATCH_MESSAGE = "Hoy no jugamos compa, el dia es una mierda :("
 ERROR_MESSAGE = "Perdon, flashe fruta 😶‍🌫️"
 
 
-def main() -> int:
+def check_and_notify() -> None:
+    state = store.load_state()
+    today_ar = datetime.now(config.TIMEZONE).date().isoformat()
+    already_notified_today = state.get("daily_notice_date_ar") == today_ar
+
     try:
         config.validate_api_football_config()
         fixture = get_next_fixture(config.BOCA_TEAM_ID)
     except ApiFootballError as exc:
-        _report_failure(f"Error de API-Football: {exc}")
-        return 1
+        _handle_error(state, f"Error de API-Football: {exc}", already_notified_today)
+        return
     except Exception:
-        _report_failure(f"Error inesperado:\n{traceback.format_exc(limit=3)}")
-        return 1
+        _handle_error(
+            state, f"Error inesperado:\n{traceback.format_exc(limit=3)}", already_notified_today
+        )
+        return
+
+    state["last_attempt_utc"] = store.now_utc_iso()
+    state["checked_at_utc"] = store.now_utc_iso()
 
     if fixture is None:
-        _save_no_match()
         print("No hay próximo partido cargado en API-Football para este equipo.")
-        _notify(NO_MATCH_MESSAGE)
-        return 0
+        _finish_no_match(state, today_ar, already_notified_today)
+        return
 
-    match_utc = datetime.fromtimestamp(
-        fixture["fixture"]["timestamp"], tz=timezone.utc
-    )
+    match_utc = datetime.fromtimestamp(fixture["fixture"]["timestamp"], tz=timezone.utc)
     now_utc = datetime.now(timezone.utc)
     hours_until_match = (match_utc - now_utc).total_seconds() / 3600
 
     if hours_until_match > config.LOOKAHEAD_HOURS:
-        _save_no_match()
         print(
             f"Próximo partido en {hours_until_match:.1f}h, fuera de la ventana "
             f"de {config.LOOKAHEAD_HOURS}h. No se programa nada todavía."
         )
-        _notify(NO_MATCH_MESSAGE)
-        return 0
+        _finish_no_match(state, today_ar, already_notified_today)
+        return
 
+    fixture_id = fixture["fixture"]["id"]
     match_dt_ar = match_utc.astimezone(config.TIMEZONE)
     send_at_utc = match_utc - timedelta(hours=config.HOURS_BEFORE_MATCH_TO_SEND)
     send_dt_ar = send_at_utc.astimezone(config.TIMEZONE)
-    message = build_message(fixture, config.BOCA_TEAM_ID, match_dt_ar)
+
+    is_new_fixture = fixture_id != state.get("last_notified_fixture_id")
 
     # Nota: la sección de historial de enfrentamientos (H2H) se sacó
     # temporalmente del mensaje. build_h2h_section() estaba incluyendo
     # partidos futuros/todavía no jugados (incluido el propio partido
     # que se está avisando) como si fueran "últimos enfrentamientos".
     # Queda pendiente arreglar el filtro antes de reactivarla.
+    message = build_message(fixture, config.BOCA_TEAM_ID, match_dt_ar)
 
-    state = {
-        "status": "scheduled",
-        "checked_at_utc": store.now_utc_iso(),
-        "fixture_id": fixture["fixture"]["id"],
-        "match_utc": match_utc.isoformat(),
-        "send_at_utc": send_at_utc.isoformat(),
-        "message": message,
-        "sent": False,
-        "sent_at_utc": None,
-    }
+    state["status"] = "scheduled"
+    state["fixture_id"] = fixture_id
+    state["match_utc"] = match_utc.isoformat()
+    state["send_at_utc"] = send_at_utc.isoformat()
+    state["message"] = message
+    state["sent"] = False
+    state["sent_at_utc"] = None
     store.save_state(state)
 
     print("Partido encontrado y programado:")
     print(message)
     print(f"\nSe va a enviar a las (UTC): {send_at_utc.isoformat()}")
 
-    _notify(build_scheduled_confirmation(fixture, match_dt_ar, send_dt_ar))
-    return 0
+    if is_new_fixture:
+        # Partido nuevo (no lo habíamos avisado todavía): siempre se
+        # notifica, sin importar si ya se mandó algo hoy — es
+        # información nueva, no un heartbeat repetido.
+        _notify(build_scheduled_confirmation(fixture, match_dt_ar, send_dt_ar))
+        state["daily_notice_date_ar"] = today_ar
+        state["last_notified_fixture_id"] = fixture_id
+        store.save_state(state)
+    else:
+        print("Ya se había avisado este mismo partido, no se repite el aviso.")
 
 
-def _save_no_match() -> None:
-    state = dict(store.EMPTY_STATE)
+def _finish_no_match(state: dict, today_ar: str, already_notified_today: bool) -> None:
     state["status"] = "no_match"
-    state["checked_at_utc"] = store.now_utc_iso()
+    state["fixture_id"] = None
+    state["match_utc"] = None
+    state["send_at_utc"] = None
+    state["message"] = None
+    state["sent"] = False
+    state["sent_at_utc"] = None
+    if not already_notified_today:
+        _notify(NO_MATCH_MESSAGE)
+        state["daily_notice_date_ar"] = today_ar
+    store.save_state(state)
+
+
+def _handle_error(state: dict, log_text: str, already_notified_today: bool) -> None:
+    print(log_text, file=sys.stderr)
+    state["last_attempt_utc"] = store.now_utc_iso()
+    if not already_notified_today:
+        _notify(ERROR_MESSAGE)
+        state["daily_notice_date_ar"] = datetime.now(config.TIMEZONE).date().isoformat()
     store.save_state(state)
 
 
 def _notify(text: str) -> None:
-    """Manda un mensaje corto por Telegram. Si falla, no se corta el
-    chequeo: el estado ya se guardó y el aviso principal (que es lo
-    importante) lo maneja watcher.py aparte."""
     print(f"Mandando por Telegram:\n{text}")
     try:
         config.validate_telegram_config()
@@ -109,18 +137,9 @@ def _notify(text: str) -> None:
         print(f"No se pudo mandar el mensaje por Telegram: {exc}", file=sys.stderr)
 
 
-def _report_failure(log_text: str) -> None:
-    # El detalle completo va a los logs del workflow, para poder
-    # debuggear. Por Telegram solo se manda el mensaje corto.
-    print(log_text, file=sys.stderr)
-    try:
-        config.validate_telegram_config()
-        telegram.send_message(ERROR_MESSAGE)
-    except Exception:
-        # Si ni siquiera se puede avisar por Telegram, al menos que quede
-        # en los logs del workflow (falla el step y se ve en Actions).
-        print("Además, no se pudo avisar por Telegram del error.", file=sys.stderr)
-        traceback.print_exc()
+def main() -> int:
+    check_and_notify()
+    return 0
 
 
 if __name__ == "__main__":

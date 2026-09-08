@@ -5,9 +5,13 @@ name: Watcher (mandar aviso de partido)
 # prioridad baja y se atrasa horas en repos poco activos. El schedule
 # de abajo queda igual, solo como backup redundante.
 #
-# NO llama a ninguna API de fútbol: solo lee data/next_match.json
-# (armado por daily-check.yml) y, si ya es la hora, manda el mensaje ya
-# armado por Telegram.
+# Cada corrida hace dos cosas (ver scripts/watcher.py):
+# 1. Si el último chequeo de partidos está viejo (más de 4hs), lo
+#    refresca llamando a la API de fútbol — esto reemplaza al viejo
+#    cron de "una vez a las 3am" con reintentos automáticos varias
+#    veces al día.
+# 2. Si ya es la hora de mandar el aviso (send_at_utc), lo manda. Para
+#    esto NO llama a la API, solo lee el estado guardado.
 on:
   schedule:
     - cron: "*/10 * * * *"
@@ -32,11 +36,13 @@ jobs:
 
       - run: pip install -r requirements.txt
 
-      - name: Revisar si hay que mandar el aviso
+      - name: Refrescar chequeo (si corresponde) y mandar aviso (si corresponde)
         working-directory: scripts
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
+          BOCA_TEAM_ID: ${{ vars.BOCA_TEAM_ID }}
         run: python watcher.py
 
       - name: Guardar data/next_match.json si cambió
@@ -47,7 +53,7 @@ jobs:
           if git diff --cached --quiet; then
             echo "Sin cambios en data/next_match.json"
           else
-            git commit -m "chore: marcar aviso como enviado"
+            git commit -m "chore: actualizar estado de próximo partido"
             git pull --rebase
             git push
           fi
