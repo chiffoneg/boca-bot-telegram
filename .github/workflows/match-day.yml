@@ -54,9 +54,8 @@ jobs:
         with:
           ref: main
 
-      - name: Tests
-        run: python3 -m unittest discover -s tests
-
+      # Los tests corren aparte (tests.yml): acá un test roto no debe
+      # frenar el aviso del día.
       - name: Mirar si Boca juega hoy y avisar
         working-directory: scripts
         env:
