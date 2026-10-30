@@ -1,60 +1,70 @@
 # boca-bot-telegram
 
-Bot que avisa por Telegram **5 horas antes** de cada partido de Boca
-Juniors, con un mensaje ya armado y listo para copiar y pegar en
-WhatsApp.
+Bot que avisa por Telegram **a las 9:00 del día del partido** que juega
+Boca Juniors, con un mensaje listo para copiar y pegar en WhatsApp.
 
-Además, todos los días manda una señal corta de vida: si hay partido,
-confirma que lo agendó y a qué hora te va a avisar; si no hay, te lo
-dice igual. Así, si un día no te llega nada, ya sabés que algo se rompió.
+```
+HOY JUEGA BOOOCAA !!! 💙💛
+⚽ Boca Juniors vs River Plate
+🏟️ Alberto José Armando (La Bombonera) (Boca de local)
+🕒 domingo 01/11 15:00 hs (hora Arg)
+🏆 Liga Profesional
+```
+
+Los días sin partido manda `Hoy no jugamos compa, el dia es una mierda :(`.
+Esa señal es a propósito: **si un día a las 9:30 no te llegó nada, algo se
+rompió.**
+
+No usa cuentas de fútbol ni claves de API, ni librerías externas: solo
+Python estándar y GitHub Actions (gratis, sin servidor propio).
 
 ## Cómo funciona
 
-Dos procesos separados, corridos por GitHub Actions (gratis, sin
-servidor propio):
+[`scripts/match_day.py`](scripts/match_day.py) lee dos fuentes, decide qué
+mandar y guarda en [`data/state.json`](data/state.json) qué mandó, así
+puede correr varias veces sin repetir mensajes.
 
-1. **`daily-check.yml`** — corre 1 vez por día, a las 3am hora
-   Argentina. Llama a la API de fútbol (API-Football), busca si Boca
-   tiene partido en las próximas ~22 horas y:
-   - **Si hay**: arma el mensaje completo, calcula la hora exacta de
-     envío (hora del partido − 5 horas), lo guarda en
-     [`data/next_match.json`](data/next_match.json) y te manda una
-     **confirmación de agendado** ("✅ Hay partido de Boca... te aviso a
-     las 16:30 hs"). El aviso completo todavía no sale acá.
-   - **Si no hay**: te manda `"Hoy no jugamos compa, el dia es una
-     mierda :("`.
-   - **Si falla**: te manda `"Perdon, flashe fruta 😶‍🌫️"`. El detalle
-     técnico del error queda en los logs del workflow, no en el chat.
+| Fuente | Qué aporta | Riesgo |
+|---|---|---|
+| API pública de ESPN | Estadio, competición, si el horario está confirmado, si se postergó | No es oficial, puede cambiar sin aviso |
+| Calendario público de fixtur.es | Control cruzado y respaldo | Proyecto chico; solo trae estadio en copas internacionales |
 
-2. **`watcher.yml`** — corre cada pocos minutos. **No** llama a ninguna
-   API de fútbol: solo lee `data/next_match.json` y compara la hora
-   actual contra la hora de envío guardada. Si ya se cumplió, manda el
-   mensaje por Telegram y marca el archivo como enviado (para no
-   duplicar).
-   **Fallback**: si esa hora ya pasó para cuando el watcher la nota (por
-   ejemplo un partido muy temprano a la mañana), lo manda igual en el
-   primer run que lo detecta, en vez de perderlo.
+Ninguna pide cuenta. El calendario es el mismo que aparece en Google
+Calendar, pero se lee con su link público, sin entrar a ninguna cuenta.
 
-Presupuesto de la API: 1-3 pedidos por día, muy lejos del límite de
-100/día del plan free.
+### Qué manda en cada caso
 
-## ⚠️ Importante: el cron nativo de GitHub no alcanza
+| Situación a las 9:00 | Mensaje |
+|---|---|
+| Hay partido y las fuentes coinciden | El aviso normal |
+| Hay partido sin horario confirmado | El aviso con "horario a confirmar" |
+| Las fuentes dan distinta hora | El aviso con la hora y ", a confirmar" |
+| Una fuente dice hoy y la otra no | "⚠️ Posible partido hoy", con lo que dice cada una |
+| Una fuente falla | El aviso con la otra, más un "🔧 Aviso técnico" aparte |
+| ESPN lo marca postergado o cancelado | "⚠️ El partido de hoy figura postergado o cancelado" |
+| No hay partido | "Hoy no jugamos..." |
+| Las dos fuentes fallan | "Perdon, flashe fruta" y qué falló; se reintenta |
 
-El trigger `schedule:` de GitHub Actions tiene **prioridad baja** y en
-repos poco activos se atrasa **horas** (lo medimos: corridas cada 3-5hs
-en vez de cada 10 min). Eso hacía que el aviso de "5 horas antes"
-llegara tarde o directamente no llegara.
+Si alguna fuente o Telegram fallan, la corrida queda en **rojo** en GitHub.
 
-Por eso el watcher se dispara **desde afuera**: un cronjob gratuito en
-[cron-job.org](https://cron-job.org) llama cada pocos minutos a la API
-de GitHub para disparar el workflow, y esos triggers sí se ejecutan al
-instante. El `schedule:` del workflow quedó igual, solo como backup.
+### Disparos
 
-Config del cronjob externo:
+Corre tres veces por día y manda un solo mensaje:
+
+1. **9:00 y 9:30 hora Argentina, desde cron-job.org.** Es el disparo
+   principal porque es puntual (medido: 31 a 70 segundos después de la
+   hora). Llama a la API de GitHub.
+2. **`schedule` de GitHub, de respaldo.** Se atrasa horas (medido: entre 4
+   y 9hs), así que no alcanza para las 9:00. Si llega antes de las 9:05
+   espera hasta esa hora; si cron-job.org dejó de andar, el aviso sale
+   igual, más tarde.
+
+Config de los dos jobs de cron-job.org (zona horaria
+`America/Argentina/Buenos_Aires`):
 
 | Campo | Valor |
 |---|---|
-| URL | `https://api.github.com/repos/chiffoneg/boca-bot-telegram/actions/workflows/watcher.yml/dispatches` |
+| URL | `https://api.github.com/repos/chiffoneg/boca-bot-telegram/actions/workflows/match-day.yml/dispatches` |
 | Método | `POST` |
 | Body | `{"ref":"main"}` |
 | Header `Authorization` | `Bearer <PAT fine-grained>` |
@@ -63,93 +73,54 @@ Config del cronjob externo:
 | Header `Content-Type` | `application/json` |
 
 El PAT es *fine-grained*, con acceso **solo a este repo** y permiso
-**Actions: Read and write**. ⏳ **Vence en 1 año** — cuando pase, hay que
-regenerarlo y actualizarlo en cron-job.org, o el bot deja de avisar.
+**Actions: Read and write**. ⏳ Vence alrededor de septiembre de 2027: al
+regenerarlo, elegí sin vencimiento si GitHub lo ofrece. Si vence, el bot
+sigue por el respaldo de GitHub, pero más tarde.
 
 ## Setup
 
-### 1. Secrets del repo
-
-En GitHub: **Settings → Secrets and variables → Actions → New repository secret**.
-Cargá estos tres (los valores nunca se escriben en el código ni quedan
-en el historial de git):
+En GitHub: **Settings → Secrets and variables → Actions**.
 
 | Secret | De dónde sale |
 |---|---|
 | `TELEGRAM_BOT_TOKEN` | Te lo da @BotFather al crear el bot |
 | `TELEGRAM_CHAT_ID` | Tu chat_id, vía `getUpdates` de la API de Telegram |
-| `API_FOOTBALL_KEY` | Dashboard de api-football.com |
 
-### 2. (Opcional) Variable BOCA_TEAM_ID
+## Probar
 
-El código asume que el ID de Boca Juniors en API-Football es `451`.
-Confirmalo así:
+Desde la pestaña Actions:
+
+- **Aviso del dia (Boca)** → Run workflow, con `dry_run` tildado: muestra en
+  el log qué mandaría, sin mandar nada. Con `date` simula otro día.
+- **Test Telegram message**: manda un mensaje de prueba con el formato real.
+
+Local:
 
 ```bash
-set API_FOOTBALL_KEY=tu_key
-python scripts/find_team_id.py
+python -m unittest discover -s tests
+python scripts/match_day.py --dry-run --date 2026-11-01
 ```
 
-Si te da un ID distinto a 451, cargalo en **Settings → Secrets and
-variables → Actions → Variables → New repository variable**, nombre
-`BOCA_TEAM_ID`. No hace falta que sea un secret porque no es información
-sensible.
+Los tests usan respuestas reales guardadas en
+[`tests/fixtures`](tests/fixtures) y corren antes de cada aviso.
 
-### 3. Probar sin esperar al cron
+## Si algo se rompe
 
-Todos los workflows tienen `workflow_dispatch` (botón "Run workflow" en
-la pestaña Actions):
+| Síntoma | Qué mirar |
+|---|---|
+| "🔧 Aviso técnico" o error de ESPN/calendario | El formato de la fuente cambió: [`espn.py`](scripts/lib/espn.py) o [`calendar_feed.py`](scripts/lib/calendar_feed.py) |
+| El aviso llega tarde (cerca del mediodía) | cron-job.org o su token: revisar el job y si venció el PAT |
+| No llega nada | Pestaña Actions: que el workflow siga habilitado |
 
-- **Test Telegram message** — manda un mensaje de prueba con el formato
-  real, sin gastar pedidos de la API de fútbol.
-- **Daily check (Boca fixtures)** — corre el chequeo real contra la API.
-  Gasta 1-3 pedidos de los 100 diarios.
-- **Watcher (mandar aviso de partido)** — actúa según lo que encuentre
-  en `data/next_match.json` en ese momento.
+**GitHub apaga los `schedule` si el repo está 60 días sin actividad.** El
+commit diario de `data/state.json` debería evitarlo. Si pasara, se
+reactiva con un click en la pestaña Actions.
 
-## Formato de `data/next_match.json`
+Si un partido arranca antes de las 9:00, el aviso sale tarde: no pasó
+nunca en 2026 (el más temprano fue a las 14:00).
 
-```jsonc
-{
-  "status": "scheduled",   // empty | no_match | scheduled | sent
-  "checked_at_utc": "...",
-  "fixture_id": 1629830,
-  "match_utc": "...",
-  "send_at_utc": "...",    // hora del aviso (partido - 5h)
-  "message": "...",        // aviso ya armado, listo para mandar
-  "sent": false,
-  "sent_at_utc": null
-}
-```
+## Pendientes
 
-## Limitaciones a tener en cuenta
-
-- **El chequeo diario corre 1 sola vez.** Si justo en ese momento la API
-  está caída, te llega el mensaje de error pero **nadie reintenta** ese
-  día. Correrlo 2-3 veces por día lo resolvería (hay presupuesto de
-  sobra en la API).
-- **GitHub apaga solo los cron si el repo está 60 días sin actividad.**
-  El bot commitea seguido, así que no debería pasar, pero si un día deja
-  de andar, revisá que los workflows sigan habilitados.
-- El plan free de API-Football tiene restricciones no documentadas
-  claramente que fuimos encontrando en la práctica: el parámetro `next`
-  de `/fixtures` y el parámetro `last` de `/fixtures/headtohead` están
-  bloqueados, y filtrar `/fixtures` por `team`+`season` solo funciona
-  para temporadas viejas (2022-2024), no la actual. El código ya
-  esquiva estas tres cosas (ver comentarios en
-  [`scripts/lib/api_football.py`](scripts/lib/api_football.py)), pero
-  si la API cambia de comportamiento de nuevo, revisar ahí primero.
-
-## Roadmap / pendientes
-
-- **Historial de enfrentamientos (H2H)**: implementado pero
-  **desactivado**. `build_h2h_section()` incluía partidos futuros o no
-  jugados (incluido el propio partido que se estaba avisando) como si
-  fueran "últimos enfrentamientos". Falta filtrar por partidos ya
-  finalizados antes de volver a engancharlo en `daily_check.py`.
-- **Sin tests automatizados**: todo el testing fue manual vía workflows.
-  Un par de tests de `build_message` y del cálculo de horarios evitarían
-  regresiones como la del H2H.
 - **Multi-destinatario**: hoy `TELEGRAM_CHAT_ID` es un solo valor, pero
-  `lib/telegram.py` está aislado, así que agregar una lista de chat_ids
-  es un cambio chico y localizado, no un rediseño.
+  [`telegram.py`](scripts/lib/telegram.py) está aislado, así que es un
+  cambio chico.

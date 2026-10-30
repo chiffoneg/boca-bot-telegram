@@ -1,14 +1,18 @@
-"""Arma los textos de los distintos mensajes a partir de datos de
-API-Football.
+"""Arma los textos de los distintos mensajes.
 
 Todo en texto plano (sin Markdown/HTML de Telegram) a propósito: así lo
 que ves en Telegram es exactamente lo que copiás y pegás en WhatsApp,
 sin asteriscos ni símbolos raros de por medio.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime
 
 from . import config
+from .decision import CALLED_OFF, ERROR, MATCH, NO_MATCH, WARNING, Decision
+from .match import Match
+
+NO_MATCH_MESSAGE = "Hoy no jugamos compa, el dia es una mierda :("
+ERROR_MESSAGE = "Perdon, flashe fruta 😶‍🌫️"
 
 _WEEKDAYS = [
     "lunes",
@@ -21,73 +25,78 @@ _WEEKDAYS = [
 ]
 
 
-def _format_datetime_ar(dt_ar: datetime) -> str:
-    weekday = _WEEKDAYS[dt_ar.weekday()]
-    return f"{weekday} {dt_ar:%d/%m} {dt_ar:%H:%M} hs (hora Arg)"
+def _format_date_ar(dt_ar: datetime) -> str:
+    return f"{_WEEKDAYS[dt_ar.weekday()]} {dt_ar:%d/%m}"
 
 
-def build_message(fixture: dict, boca_team_id: int, match_dt_ar: datetime) -> str:
-    """Mensaje principal: quién juega, dónde, cuándo y en qué torneo."""
-    home = fixture["teams"]["home"]["name"]
-    away = fixture["teams"]["away"]["name"]
-    home_id = fixture["teams"]["home"]["id"]
+def _format_when(match: Match, start_utc: datetime | None, tentative: bool = False) -> str:
+    if start_utc is None:
+        return f"{_format_date_ar(match.start_ar)}, horario a confirmar"
 
-    boca_is_local = home_id == boca_team_id
-    localia = "local" if boca_is_local else "visitante"
+    start_ar = start_utc.astimezone(config.TIMEZONE)
+    text = f"{_format_date_ar(start_ar)} {start_ar:%H:%M} hs (hora Arg)"
+    return f"{text}, a confirmar" if tentative else text
 
-    venue = fixture.get("fixture", {}).get("venue", {}) or {}
-    venue_name = venue.get("name") or "Estadio a confirmar"
 
-    league_name = fixture.get("league", {}).get("name", "Torneo a confirmar")
+def build_message(decision: Decision, source_errors: list[str]) -> str:
+    if decision.kind == MATCH:
+        return build_match_message(decision)
+    if decision.kind == CALLED_OFF:
+        return build_called_off_message(decision.match)
+    if decision.kind == WARNING:
+        return build_warning_message(decision)
+    if decision.kind == NO_MATCH:
+        return NO_MATCH_MESSAGE
+    if decision.kind == ERROR:
+        return "\n".join([ERROR_MESSAGE, *source_errors])
+    raise ValueError(f"Decisión desconocida: {decision.kind}")
+
+
+def build_match_message(decision: Decision) -> str:
+    match = decision.match
+    localia = "local" if match.boca_is_home else "visitante"
+    venue = match.venue or "Estadio a confirmar"
 
     lines = [
-        "JUEGA BOOOCAA !!! 💙💛",
-        f"⚽ {home} vs {away}",
-        f"🏟️ {venue_name} (Boca de {localia})",
-        f"🕒 {_format_datetime_ar(match_dt_ar)}",
-        f"🏆 {league_name}",
+        "HOY JUEGA BOOOCAA !!! 💙💛",
+        f"⚽ {match.home} vs {match.away}",
+        f"🏟️ {venue} (Boca de {localia})",
+        f"🕒 {_format_when(match, decision.start_utc, decision.tentative)}",
+        f"🏆 {match.competition}",
     ]
     return "\n".join(lines)
 
 
-def build_h2h_section(h2h_fixtures: list, max_items: int = 5) -> str:
-    """Sección con los últimos enfrentamientos entre los dos equipos.
-    Devuelve "" si no hay datos (para que quien llame decida no
-    agregar nada al mensaje)."""
-    if not h2h_fixtures:
-        return ""
-
-    sorted_fx = sorted(
-        h2h_fixtures, key=lambda f: f["fixture"]["timestamp"], reverse=True
-    )[:max_items]
-
-    lines = ["📊 Últimos enfrentamientos:"]
-    for f in sorted_fx:
-        dt_ar = datetime.fromtimestamp(
-            f["fixture"]["timestamp"], tz=timezone.utc
-        ).astimezone(config.TIMEZONE)
-        home = f["teams"]["home"]["name"]
-        away = f["teams"]["away"]["name"]
-        goals = f.get("goals", {})
-        gh, ga = goals.get("home"), goals.get("away")
-        score = f"{gh}-{ga}" if gh is not None and ga is not None else "s/d"
-        lines.append(f"  {dt_ar:%d/%m/%y} {home} {score} {away}")
-
-    return "\n".join(lines)
-
-
-def build_scheduled_confirmation(
-    fixture: dict, match_dt_ar: datetime, send_dt_ar: datetime
-) -> str:
-    """Confirmación que se manda apenas se agenda un partido, para saber
-    que el bot lo detectó (y de paso, que sigue vivo)."""
-    home = fixture["teams"]["home"]["name"]
-    away = fixture["teams"]["away"]["name"]
-
+def build_called_off_message(match: Match) -> str:
     lines = [
-        "✅ Hay partido de Boca",
-        f"⚽ {home} vs {away}",
-        f"🕒 {_format_datetime_ar(match_dt_ar)}",
-        f"📬 Te aviso a las {send_dt_ar:%H:%M} hs",
+        "⚠️ El partido de hoy figura postergado o cancelado",
+        f"⚽ {match.home} vs {match.away}",
+        f"🏆 {match.competition}",
     ]
     return "\n".join(lines)
+
+
+def build_warning_message(decision: Decision) -> str:
+    match = decision.match
+    other = decision.other
+
+    lines = [
+        "⚠️ Posible partido hoy, las fuentes no coinciden",
+        f"⚽ {match.home} vs {match.away}",
+        f"🔎 {match.source}: {_format_when(match, _shown_time(match))}",
+    ]
+    if other is not None:
+        lines.append(f"🔎 {other.source}: {_format_when(other, _shown_time(other))}")
+    else:
+        lines.append(f"🔎 {decision.other_source}: sin partido cargado")
+    return "\n".join(lines)
+
+
+def _shown_time(match: Match) -> datetime | None:
+    return match.start_utc if match.time_confirmed else None
+
+
+def build_source_alert(source_errors: list[str]) -> str:
+    """Mensaje aparte (para no ensuciar el que se copia a WhatsApp) cuando
+    una fuente falló pero el bot pudo seguir con la otra."""
+    return "\n".join(["🔧 Aviso técnico: hoy falló una fuente", *source_errors])

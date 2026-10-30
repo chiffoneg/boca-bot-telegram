@@ -1,0 +1,89 @@
+name: Aviso del dia (Boca)
+
+# Tres disparos por día, un solo mensaje (data/state.json evita repetir):
+#
+# - 9:00 y 9:30 hora Argentina, desde cron-job.org vía workflow_dispatch.
+#   Es el disparo principal porque es puntual: el "schedule" nativo de
+#   GitHub se atrasa horas (medido: entre 4 y 9hs).
+# - schedule de GitHub (3:30 hora Argentina, UTC-3 todo el año): respaldo
+#   por si cron-job.org o su token dejan de andar. Como llega atrasado,
+#   si cae antes de las 9:05 espera hasta esa hora. Los jobs de GitHub
+#   duran 6hs como máximo: por eso no arranca antes de las 3:05.
+on:
+  schedule:
+    - cron: "30 6 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Mostrar el mensaje sin mandar nada"
+        type: boolean
+        default: false
+      date:
+        description: "Fecha a simular, solo con dry run (AAAA-MM-DD)"
+        type: string
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  # La espera va en un job aparte, sin concurrency, para que el respaldo
+  # dormido no le trabe la fila al disparo de las 9:00.
+  wait:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Esperar hasta las 9:05 si es el respaldo
+        if: github.event_name == 'schedule'
+        run: |
+          target=$(TZ=America/Argentina/Buenos_Aires date -d "09:05" +%s)
+          now=$(date +%s)
+          if [ "$now" -lt "$target" ]; then
+            sleep $((target - now))
+          fi
+
+  notify:
+    needs: wait
+    runs-on: ubuntu-latest
+    concurrency:
+      group: match-day
+      cancel-in-progress: false
+    steps:
+      # ref: main para leer el estado de ahora y no el del momento del
+      # disparo, que en el respaldo puede ser de horas atrás.
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Tests
+        run: python3 -m unittest discover -s tests
+
+      - name: Mirar si Boca juega hoy y avisar
+        working-directory: scripts
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          SIMULATED_DATE: ${{ inputs.date }}
+        run: |
+          args=""
+          if [ "$DRY_RUN" = "true" ]; then
+            args="--dry-run"
+            if [ -n "$SIMULATED_DATE" ]; then
+              args="$args --date $SIMULATED_DATE"
+            fi
+          fi
+          python3 match_day.py $args
+
+      - name: Guardar data/state.json si cambió
+        if: always()
+        run: |
+          git config user.name "boca-bot"
+          git config user.email "boca-bot@users.noreply.github.com"
+          git add data/state.json
+          if git diff --cached --quiet; then
+            echo "Sin cambios en data/state.json"
+          else
+            git commit -m "chore: registrar aviso del dia"
+            git pull --rebase
+            git push
+          fi

@@ -1,37 +1,36 @@
 #!/usr/bin/env python3
-"""Utilidad para correr A MANO (no forma parte de los workflows).
+"""Utilidad para correr A MANO (no forma parte del aviso diario).
 
 Manda un mensaje de prueba con el formato real, sin depender de que haya
-un partido próximo de verdad. Sirve para confirmar que el bot token y el
-chat_id están bien configurados de punta a punta.
+un partido hoy. Sirve para confirmar que el bot token y el chat_id están
+bien configurados de punta a punta.
 
 Uso:
-    (con .env cargado o las variables de entorno seteadas)
+    (con las variables de entorno seteadas)
     python scripts/send_test_message.py
 """
 
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
-from lib import config, telegram
-from lib.message import build_message
-
-_FAKE_FIXTURE = {
-    "fixture": {
-        "id": 0,
-        "venue": {"name": "La Bombonera"},
-    },
-    "league": {"name": "Liga Profesional Argentina (MENSAJE DE PRUEBA)"},
-    "teams": {
-        "home": {"id": config.BOCA_TEAM_ID, "name": "Boca Juniors"},
-        "away": {"id": -1, "name": "River Plate"},
-    },
-}
+from lib import telegram
+from lib.decision import MATCH, Decision
+from lib.match import Match
+from lib.message import build_match_message
 
 
 def main() -> int:
-    match_dt_ar = datetime.now(config.TIMEZONE) + timedelta(hours=5)
-    message = build_message(_FAKE_FIXTURE, config.BOCA_TEAM_ID, match_dt_ar)
+    start_utc = datetime.now(timezone.utc) + timedelta(hours=5)
+    match = Match(
+        source="Prueba",
+        start_utc=start_utc,
+        time_confirmed=True,
+        home="Boca Juniors",
+        away="River Plate",
+        competition="Liga Profesional (MENSAJE DE PRUEBA)",
+        venue="La Bombonera",
+    )
+    message = build_match_message(Decision(MATCH, match=match, start_utc=start_utc))
     message = "🧪 ESTO ES UNA PRUEBA, no es un partido real.\n\n" + message
 
     print("Mandando este mensaje de prueba:\n")
