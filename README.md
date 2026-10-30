@@ -69,13 +69,15 @@ Config de los dos jobs de cron-job.org (zona horaria
 | Body | `{"ref":"main"}` |
 | Header `Authorization` | `Bearer <PAT fine-grained>` |
 | Header `Accept` | `application/vnd.github+json` |
-| Header `X-GitHub-Api-Version` | `2022-11-28` |
+| Header `X-GitHub-Api-Version` | `2026-03-10` |
 | Header `Content-Type` | `application/json` |
 
 El PAT es *fine-grained*, con acceso **solo a este repo** y permiso
-**Actions: Read and write**. ⏳ Vence alrededor de septiembre de 2027: al
-regenerarlo, elegí sin vencimiento si GitHub lo ofrece. Si vence, el bot
-sigue por el respaldo de GitHub, pero más tarde.
+**Actions: Read and write**. ⏳ Vence el **8/9/2027**: al regenerarlo,
+elegí sin vencimiento si GitHub lo ofrece. Si vence, el bot sigue por el
+respaldo de GitHub, pero más tarde. GitHub avisa con años de anticipación
+cuando una versión de su API va a dejar de andar: si el disparo empieza a
+fallar, revisá también ese header.
 
 ## Setup
 
@@ -102,7 +104,8 @@ python scripts/match_day.py --dry-run --date 2026-11-01
 ```
 
 Los tests usan respuestas reales guardadas en
-[`tests/fixtures`](tests/fixtures) y corren antes de cada aviso.
+[`tests/fixtures`](tests/fixtures) y corren con cada cambio de código. A
+propósito no corren antes del aviso: un test roto no debe frenar el mensaje.
 
 ## Si algo se rompe
 
