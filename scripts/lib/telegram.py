@@ -1,8 +1,8 @@
 """Cliente mínimo para mandar mensajes por la API de Telegram."""
 
-import requests
+import json
 
-from . import config
+from . import config, net
 
 
 class TelegramError(Exception):
@@ -22,11 +22,10 @@ def send_message(text: str) -> None:
     }
 
     try:
-        resp = requests.post(url, json=payload, timeout=15)
-    except requests.RequestException as exc:
-        raise TelegramError(f"Error de red mandando mensaje a Telegram: {exc}") from exc
-
-    if resp.status_code != 200:
-        raise TelegramError(
-            f"Telegram respondió HTTP {resp.status_code}: {resp.text[:300]}"
+        net.request(
+            url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
         )
+    except net.NetError as exc:
+        raise TelegramError(f"Error mandando mensaje a Telegram: {exc}") from exc
